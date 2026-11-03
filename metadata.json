@@ -1,0 +1,6 @@
+{
+  "name": "OLD VIP Lucky Mic",
+  "description": "Premium black-and-red VIP microphone volume booster, live input meter, earphone optimization, real-time testing, and sound presets.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
