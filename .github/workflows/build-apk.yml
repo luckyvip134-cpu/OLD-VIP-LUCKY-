@@ -1,0 +1,101 @@
+name: Build and Release APK
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Ensure Gradle Wrapper
+        run: |
+          if [ ! -f gradlew ]; then
+            gradle wrapper --gradle-version 9.3.1
+          fi
+          chmod +x gradlew
+
+      - name: Build Debug APK
+        run: ./gradlew assembleDebug --no-daemon
+
+      - name: Verify APK Exists
+        run: |
+          if [ ! -f app/build/outputs/apk/debug/app-debug.apk ]; then
+            echo "Error: APK file not found at app/build/outputs/apk/debug/app-debug.apk"
+            exit 1
+          fi
+
+      - name: Upload Actions Artifact
+        id: upload_artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OLD-VIP-Lucky-Mic-APK
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Prepare Release Asset
+        id: prepare_asset
+        run: |
+          ASSET_NAME="OLD-VIP-Lucky-Mic-v${{ github.run_number }}.${{ github.run_attempt }}.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk "$ASSET_NAME"
+          echo "asset_name=$ASSET_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Publish GitHub Release
+        id: publish_release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ github.run_number }}.${{ github.run_attempt }}
+          name: OLD VIP Lucky Mic v${{ github.run_number }}.${{ github.run_attempt }}
+          target_commitish: ${{ github.sha }}
+          make_latest: true
+          draft: false
+          prerelease: false
+          files: ${{ steps.prepare_asset.outputs.asset_name }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Report Workflow Summary
+        if: always()
+        run: |
+          echo "## Build & Release Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **AGP Version:** 9.1.1" >> $GITHUB_STEP_SUMMARY
+          echo "- **Java Version:** 17" >> $GITHUB_STEP_SUMMARY
+          echo "- **Gradle Version:** 9.3.1" >> $GITHUB_STEP_SUMMARY
+          echo "- **Build Command:** \`./gradlew assembleDebug --no-daemon\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **APK Path:** \`app/build/outputs/apk/debug/app-debug.apk\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Actions Artifact Name:** \`OLD-VIP-Lucky-Mic-APK\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Release Tag:** \`v${{ github.run_number }}.${{ github.run_attempt }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Release Asset File:** \`${{ steps.prepare_asset.outputs.asset_name || 'OLD-VIP-Lucky-Mic.apk' }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.publish_release.outcome }}" = "success" ]; then
+            echo "- **Release Publishing:** Succeeded (Directly downloadable APK attached)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- **Release Publishing:** Failed (or skipped)" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.upload_artifact.outcome }}" = "success" ]; then
+            echo "- **Actions Artifact:** Successfully uploaded and available for download independently of release status." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- **Actions Artifact:** Failed" >> $GITHUB_STEP_SUMMARY
+          fi
